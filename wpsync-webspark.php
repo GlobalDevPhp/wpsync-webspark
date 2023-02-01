@@ -201,8 +201,16 @@ class wpSync {
     private function sync_products ( array $products ): bool {
         $new_products_id = array();
         foreach ($products as $item) {
-            $products = wc_get_products( array( 'sku' => $item->sku ) );
-            if ( empty($products) ) {
+            
+            $pos = strpos($item->picture, '/abstract');
+            if ($pos !== false) {
+                $url_parced = parse_url($item->picture);
+                $headers = wp_get_http_headers($item->picture);
+                $item->picture = $url_parced['scheme'].'://'.$url_parced['host'].$headers['location'];
+            }
+            
+            $product = wc_get_products( array( 'sku' => $item->sku ) );
+            if ( empty($product) ) {
                 $product_id = wp_insert_post( 
                     array(
                         'post_title' => $item->name,
@@ -239,11 +247,9 @@ class wpSync {
                 update_post_meta( $product_id, '_stock', $item->in_stock );
                 
                 $this->upload_image( $item->picture, $product_id );
-                
                 $new_products_id[] = $product_id;
-                wp_die(var_export($temp_file, true));
             } else {
-                $product_id = $products[0]->id;
+                $product_id = $product[0]->id;
                 
                 $meta_input = array(
                     '_stock_status' => 'instock'
