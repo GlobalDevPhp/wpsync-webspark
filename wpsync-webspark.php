@@ -146,6 +146,7 @@ class wpSync {
 		} elseif($response_code  === 200 ) { // correct response code - do import
 			$data_decoded = json_decode( wp_remote_retrieve_body( $response ) );
             if ( !empty($data_decoded->data) && is_array($data_decoded->data) ) {
+                $logger->log('wpsync-webspark',__('WebSpark API success!', 'wpsync-webspark'));
                 $this->sync_products( $data_decoded->data );
                 unset( $data_decoded );
             } else
@@ -168,12 +169,12 @@ class wpSync {
     private function sync_products ( array $products ): bool {
         $new_products_id = array();
         foreach ($products as $item) {
-            
+            $original_image = $item->picture;
             $pos = strpos($item->picture, '/abstract');
             if ($pos !== false) {
                 $url_parced = parse_url($item->picture);
                 $headers = wp_get_http_headers($item->picture);
-                $item->picture = $url_parced['scheme'].'://'.$url_parced['host'].$headers['location'];
+                $original_image = $url_parced['scheme'].'://'.$url_parced['host'].$headers['location'];
             }
             
             $product = wc_get_products( array( 'sku' => $item->sku ) );
@@ -214,7 +215,7 @@ class wpSync {
                 update_post_meta( $product_id, '_backorders', 'no' );                
                 update_post_meta( $product_id, '_stock', $item->in_stock );
                 
-                $this->upload_image( $item->picture, $product_id );
+                $this->upload_image( $original_image, $product_id );
                 $new_products_id[] = $product_id;
             } else {
                 $product_id = $product[0]->id;
@@ -234,7 +235,7 @@ class wpSync {
                 if ( $image_url != $item->picture ) {
                     $meta_input['_custom_image_url'] = $item->picture;
                     wp_delete_attachment( get_post_thumbnail_id($product_id), true );                    
-                    $this->upload_image( $item->picture, $product_id );
+                    $this->upload_image( $original_image, $product_id );
                 } 
                 $data = array(
                     'ID' => $product_id,
@@ -247,17 +248,21 @@ class wpSync {
                 $new_products_id[] = $product_id;
                 wp_update_post( $data );
             }
+            unset($product);
         }
-        $args = array(
-            'post_status'   => 'publish',
-            'post_type'     => "product",
-            'post__not_in'  => $new_products_id,
-        );
         
-        $posts = get_posts($args);
-        foreach ($posts as $post) {
-            wp_delete_post($post->ID, true);
-            wp_delete_attachment( get_post_thumbnail_id($post->ID), true );
+        if (!empty($new_products_id)) {
+            $args = array(
+                'post_status'   => 'publish',
+                'post_type'     => "product",
+                'post__not_in'  => $new_products_id,
+            );
+
+            $posts = get_posts($args);
+            foreach ($posts as $post) {
+                wp_delete_post($post->ID, true);
+                wp_delete_attachment( get_post_thumbnail_id($post->ID), true );
+            }
         }
         return true;
     }
