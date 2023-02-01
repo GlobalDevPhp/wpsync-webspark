@@ -189,19 +189,16 @@ class wpSync {
                     ) 
                 );
                 wp_set_object_terms( $product_id, 'simple', 'product_type' );
-                
                 update_post_meta( $product_id, '_custom_image_url', $item->picture );
                 update_post_meta( $product_id, '_price', $item->price );
                 update_post_meta( $product_id, '_regular_price', $item->price  );
                 update_post_meta( $product_id, '_sale_price', $item->price  );
                 update_post_meta( $product_id, '_sku', $item->sku );
-                
                 update_post_meta( $product_id, '_visibility', 'visible' );
                 update_post_meta( $product_id, '_stock_status', 'instock');
                 update_post_meta( $product_id, 'total_sales', '0' );
                 update_post_meta( $product_id, '_downloadable', 'no' );
                 update_post_meta( $product_id, '_virtual', 'yes' );
-                
                 update_post_meta( $product_id, '_purchase_note', '' );
                 update_post_meta( $product_id, '_featured', 'no' );
                 update_post_meta( $product_id, '_weight', '' );
@@ -219,6 +216,7 @@ class wpSync {
                 $new_products_id[] = $product_id;
             } else {
                 $product_id = $product[0]->id;
+                $need_update = false;
                 
                 $meta_input = array(
                     '_stock_status' => 'instock'
@@ -226,27 +224,34 @@ class wpSync {
                 $price = get_post_meta( $product_id, '_price', true );
                 if ( $price != $item->price ) {
                     $meta_input['_price'] = $meta_input['_regular_price'] = $meta_input['_sale_price'] = $item->price;
+                    $need_update = true;
                 }
                 $stock = get_post_meta( $product_id, '_stock', true );
                 if ( $stock != $item->in_stock ) {
                     $meta_input['_stock'] = $item->in_stock;
+                    $need_update = true;
                 }                
                 $image_url = get_post_meta( $product_id, '_custom_image_url', true );
                 if ( $image_url != $item->picture ) {
                     $meta_input['_custom_image_url'] = $item->picture;
                     wp_delete_attachment( get_post_thumbnail_id($product_id), true );                    
                     $this->upload_image( $original_image, $product_id );
-                } 
-                $data = array(
-                    'ID' => $product_id,
-                    'post_title' => $item->name,
-                    'post_name' => sanitize_title( $item->name ),
-                    'post_content' => $item->description,
-                    'post_status' => 'publish',
-                    'meta_input' => $meta_input
-                );
+                }
+                if (get_the_title($product_id) != $item->name || get_post_field('post_content', $product_id) != htmlspecialchars($item->description)) {
+                    $need_update = true;
+                }
+                if ($need_update) {
+                    $data = array(
+                        'ID' => $product_id,
+                        'post_title' => $item->name,
+                        'post_name' => sanitize_title( $item->name ),
+                        'post_content' => $item->description,
+                        'post_status' => 'publish',
+                        'meta_input' => $meta_input
+                    );
+                    wp_update_post( $data );
+                }
                 $new_products_id[] = $product_id;
-                wp_update_post( $data );
             }
             unset($product);
         }
