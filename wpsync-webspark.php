@@ -56,18 +56,6 @@ class wpSync {
     }
 
     /**
-     * Init this plugin
-     *
-     * @since 1.0.0
-     *
-     * @access public
-     * @return void
-     */
-    public function init() {
-        //
-    }
-
-    /**
      * Adds all the plugin hooks
      *
      * @since 1.0.0
@@ -78,12 +66,8 @@ class wpSync {
     public function add_hooks() {
         // Actions.
         add_action( 'wpsync_hourly_hook', array( $this, 'wpsync_hourly_hook' ) );
-        //add_action('init', array($this, 'init'));
-        //add_action('admin_menu', array($this, 'admin_menu'));
-        //
         // Load Translation.
         load_plugin_textdomain('wpsync-webspark', false, basename(dirname(__FILE__)) . '/languages');
-        //add_action('wp_ajax_wpsync-webspark', array($this, 'ajax_wpsync-webspark'));
     }
 
 
@@ -115,7 +99,7 @@ class wpSync {
     }
 
     /**
-     * Check Woocommerce is activated
+     * Check Woocommerce is activated or not
      *
      * @since 1.0.0
      *
@@ -154,31 +138,14 @@ class wpSync {
         ));
         $logger = wc_get_logger();
         $response_code = wp_remote_retrieve_response_code( $response );
-        
-        $response = true;
-        $response_code = 200;
+
         // if we have error like "cURL error 28: Operation timed out after 5001 milliseconds with 0 bytes received"
         if ( is_wp_error( $response ) ){
 			$logger->log('wpsync-webspark',__('WebSpark API responce error. Product import failed!', 'wpsync-webspark'));
-            //$logger->log('wpsync-webspark', var_export($response, true));
 			return false;
 		} elseif($response_code  === 200 ) { // correct response code - do import
-            
-            $filepath = 'filedupm.txt';
-            if (file_exists($filepath)) { // read from cache for debug mode
-                $body = file_get_contents($filepath);
-            } else {
-                $body = wp_remote_retrieve_body( $response );
-
-                $f = @fopen($filepath, "a");
-                @fputs($f, $body);
-                @fclose($f); 
-            }
-            
-            //$body = wp_remote_retrieve_body( $response );
-			$data_decoded = json_decode( $body );
+			$data_decoded = json_decode( wp_remote_retrieve_body( $response ) );
             if ( !empty($data_decoded->data) && is_array($data_decoded->data) ) {
-                $logger->log('wpsync-webspark',__('WebSpark API success call!', 'wpsync-webspark'));
                 $this->sync_products( $data_decoded->data );
                 unset( $data_decoded );
             } else
@@ -191,7 +158,7 @@ class wpSync {
     }
     
     /**
-     * Used like hook. Get products and sync with woo.
+     * Get products and sync with woo.
      *
      * @since 1.0.0
      *
@@ -214,6 +181,7 @@ class wpSync {
                 $product_id = wp_insert_post( 
                     array(
                         'post_title' => $item->name,
+                        'post_name' => sanitize_title( $item->name ),
                         'post_content' => $item->description,
                         'post_status' => 'publish',
                         'post_type' => "product",
@@ -265,12 +233,13 @@ class wpSync {
                 $image_url = get_post_meta( $product_id, '_custom_image_url', true );
                 if ( $image_url != $item->picture ) {
                     $meta_input['_custom_image_url'] = $item->picture;
-                    wp_delete_attachment($product_id, true);                    
+                    wp_delete_attachment( get_post_thumbnail_id($product_id), true );                    
                     $this->upload_image( $item->picture, $product_id );
                 } 
                 $data = array(
                     'ID' => $product_id,
                     'post_title' => $item->name,
+                    'post_name' => sanitize_title( $item->name ),
                     'post_content' => $item->description,
                     'post_status' => 'publish',
                     'meta_input' => $meta_input
@@ -287,7 +256,8 @@ class wpSync {
         
         $posts = get_posts($args);
         foreach ($posts as $post) {
-            wp_delete_post($post->ID, true); 
+            wp_delete_post($post->ID, true);
+            wp_delete_attachment( get_post_thumbnail_id($post->ID), true );
         }
         return true;
     }
